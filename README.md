@@ -30,6 +30,15 @@ CodiumAI Cover Agent aims to help efficiently increasing code coverage, by autom
 
 
 ## News and Updates
+
+### 2024-06-05:
+The logic and prompts for adding new imports for the generated tests have been improved.
+
+We also added a [usage examples](docs/usage_examples.md) file, with more elaborate examples of how to use the Cover Agent.
+
+### 2024-06-01:
+Added support for comprehensive logging to [Weights and Biases](https://wandb.ai/). Set the `WANDB_API_KEY` environment variable to enable this feature.
+
 ### 2024-05-26:
 Cover-Agent now supports nearly any LLM model in the world, using [LiteLLM](#using-other-llms) package.
 
@@ -98,9 +107,12 @@ cover-agent \
   --included-files "<optional_list_of_files_to_include>"
 ```
 
-You can use the example projects within this repository to run this code as a test.
+You can use the example code below to try out the Cover Agent.
+(Note that the [usage_examples](docs/usage_examples.md) file provides more elaborate examples of how to use the Cover Agent)
 
-Follow the steps in the README.md file located in the `templated_tests/python_fastapi/` directory, then return to the root of the repository and run the following command to add tests to the **python fastapi** example:
+#### Python
+
+Follow the steps in the README.md file located in the `templated_tests/python_fastapi/` directory to setup an environment, then return to the root of the repository, and run the following command to add tests to the **python fastapi** example:
 ```shell
 cover-agent \
   --source-file-path "templated_tests/python_fastapi/app.py" \
@@ -112,6 +124,8 @@ cover-agent \
   --desired-coverage 70 \
   --max-iterations 10
 ```
+
+#### Go
 
 For an example using **go** `cd` into `templated_tests/go_webservice`, set up the project following the `README.md`.
 To work with coverage reporting, you need to install `gocov` and `gocov-xml`. Run the following commands to install these tools:
@@ -132,24 +146,24 @@ cover-agent \
   --max-iterations 1
 ```
 
-Try and add more tests to this project by running this command at the root of this repository:
+#### Java
+For an example using **java** `cd` into `templated_tests/java_gradle`, set up the project following the [README.md](templated_tests/java_gradle/README.md).
+To work with jacoco coverage reporting, follow the [README.md](templated_tests/java_gradle/README.md) Requirements section:
+and then run the following command:
 ```shell
-poetry run cover-agent \
-  --source-file-path "cover_agent/main.py" \
-  --test-file-path "tests/test_main.py" \
-  --code-coverage-report-path "coverage.xml" \
-  --test-command "poetry run pytest --junitxml=testLog.xml --cov=templated_tests --cov=cover_agent --cov-report=xml --cov-report=term --log-cli-level=INFO" \
-  --coverage-type "cobertura" \
-  --desired-coverage 70 \
-  --max-iterations 1 \
-  --model "gpt-4o"
+cover-agent \
+  --source-file-path="src/main/java/com/davidparry/cover/SimpleMathOperations.java" \
+  --test-file-path="src/test/groovy/com/davidparry/cover/SimpleMathOperationsSpec.groovy" \
+  --code-coverage-report-path="build/reports/jacoco/test/jacocoTestReport.csv" \
+  --test-command="./gradlew clean test jacocoTestReport" \
+  --test-command-dir=$(pwd) \
+  --coverage-type="jacoco" \
+  --desired-coverage=70 \
+  --max-iterations=1
 ```
-
-Note: If you are using Poetry then use the `poetry run cover-agent` command instead of the `cover-agent` run command.
 
 ### Outputs
 A few debug files will be outputted locally within the repository (that are part of the `.gitignore`)
-* `generated_prompt.md`: The full prompt that is sent to the LLM
 * `run.log`: A copy of the logger that gets dumped to your `stdout`
 * `test_results.html`: A results table that contains the following for each generated test:
   * Test status
@@ -158,6 +172,9 @@ A few debug files will be outputted locally within the repository (that are part
   * `stderr`
   * `stdout`
   * Generated test
+
+### Additional logging
+If you set an environment variable `WANDB_API_KEY`, the prompts, responses, and additional information will be logged to [Weights and Biases](https://wandb.ai/).
 
 ### Using other LLMs
 This project uses LiteLLM to communicate with OpenAI and other hosted LLMs (supporting 100+ LLMs to date). To use a different model other than the OpenAI default you'll need to:
@@ -172,6 +189,16 @@ export VERTEX_LOCATION="us-west"
 cover-agent \
   ...
   --model "vertex_ai/gemini-pro"
+```
+
+#### OpenAI Compatible Endpoint
+```shell
+export OPENAI_API_KEY="<your api key>" # If <your-api-base> requires an API KEY, set this value.
+
+cover-agent \
+  ...
+  --model "openai/<your model name>" \
+  --api-base "<your-api-base>"
 ```
 
 

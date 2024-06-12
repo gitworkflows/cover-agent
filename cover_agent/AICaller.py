@@ -1,5 +1,9 @@
+import datetime
+import os
 import time
+
 import litellm
+from wandb.sdk.data_types.trace_tree import Trace
 
 
 class AICaller:
@@ -37,20 +41,24 @@ class AICaller:
                 {"role": "user", "content": prompt["user"]},
             ]
 
-        # API base exception for Ollama and Hugging Face models
-        if "ollama" in self.model or "huggingface" in self.model:
-            response = litellm.completion(
-                model=self.model,
-                api_base=self.api_base,
-                messages=messages,
-                max_tokens=max_tokens,
-                stream=True,
-                temperature=0.2, # low, but not zero. This is a good default for most cases
-            )
-        else:
-            response = litellm.completion(
-                model=self.model, messages=messages, max_tokens=max_tokens, stream=True
-            )
+        # Default Completion parameters
+        completion_params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "temperature": 0.2,
+        }
+
+        # API base exception for OpenAI Compatible, Ollama and Hugging Face models
+        if (
+            "ollama" in self.model
+            or "huggingface" in self.model
+            or self.model.startswith("openai/")
+        ):
+            completion_params["api_base"] = self.api_base
+
+        response = litellm.completion(**completion_params)
 
         chunks = []
         print("Streaming results from LLM model...")
@@ -66,6 +74,14 @@ class AICaller:
         print("\n")
 
         model_response = litellm.stream_chunk_builder(chunks, messages=messages)
+
+        if 'WANDB_API_KEY' in os.environ:
+            root_span = Trace(
+                name="inference_"+datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                kind="llm",  # kind can be "llm", "chain", "agent" or "tool
+                inputs={"user_prompt": prompt["user"], "system_prompt": prompt["system"]},
+                outputs={"model_response": model_response["choices"][0]["message"]["content"]})
+            root_span.log(name="inference")
 
         # Returns: Response, Prompt token count, and Response token count
         return (

@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version_changed: ${{ steps.filter.outputs.version_changed }}
+      relevant_changes: ${{ steps.filter.outputs.relevant_changes }}
     steps:
       - uses: actions/checkout@v3
       - uses: dorny/paths-filter@v2
@@ -22,8 +23,13 @@ jobs:
           filters: |
             version_changed:
               - 'cover_agent/version.txt'
+            relevant_changes:
+              - '!README.md'
+              - '!docs/**'
 
   test:
+    needs: [changes]
+    if: needs.changes.outputs.relevant_changes == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -40,8 +46,7 @@ jobs:
       - name: Run tests and generate reports
         env:
           OPENAI_API_KEY: "This_is_a_fake_API_key"
-        run: |
-          poetry run pytest --junitxml=testLog.xml --cov=cover_agent --cov-report=xml:cobertura.xml --cov-report=term --cov-fail-under=70 --log-cli-level=INFO
+        run: make test
       - name: Upload test report
         uses: actions/upload-artifact@v2
         if: always()
@@ -79,7 +84,8 @@ jobs:
           cover-agent --help        
 
   build:
-    needs: test
+    needs: [test, changes]
+    if: needs.changes.outputs.relevant_changes == 'true'
     strategy:
       matrix:
        os: [ubuntu-latest, windows-latest, macos-latest]
@@ -93,35 +99,47 @@ jobs:
         python-version: '3.12'
     - name: Install Dependencies
       run: |
-        pip install poetry
+        pip install poetry wandb
         poetry install
     - name: Build Executable
-      run: |
-        poetry run pyinstaller --add-data "cover_agent/version.txt:." --add-data "cover_agent/settings/language_extensions.toml:." --add-data "cover_agent/settings/test_generation_prompt.toml:." --hidden-import=tiktoken_ext.openai_public --hidden-import=tiktoken_ext --onefile --name cover-agent-${{ matrix.os }} cover_agent/main.py
+      run: make installer
     - name: Test Executable (Windows)
       if: ${{ matrix.os == 'windows-latest' }}
-      run: .\dist\cover-agent-${{ matrix.os }}.exe --help
+      run: .\dist\cover-agent.exe --help
       shell: pwsh
     - name: Test Executable (Unix)
       if: ${{ matrix.os != 'windows-latest' }}
-      run: ./dist/cover-agent-${{ matrix.os }} --help
+      run: ./dist/cover-agent --help
       shell: bash
     - name: Upload Executable
       uses: actions/upload-artifact@v2
       with:
         name: cover-agent-${{ matrix.os }}
-        path: dist/cover-agent-${{ matrix.os }}*
+        path: dist/cover-agent*
 
   release:
+    # This job will run only if the following conditions are met:
+    # - The event is a 'push' to the 'main' branch
+    # - The 'version.txt' file has changed
+    # - There are relevant changes outside of 'README.md' and the 'docs/' folder
     needs: [build, changes]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.version_changed == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.version_changed == 'true' && needs.changes.outputs.relevant_changes == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Download executables
+    - name: Download executables (Ubuntu)
       uses: actions/download-artifact@v2
       with:
-        path: dist
+        name: cover-agent-ubuntu-latest
+        path: dist/ubuntu-latest
+    - uses: actions/download-artifact@v2
+      with:
+        name: cover-agent-windows-latest
+        path: dist/windows-latest
+    - uses: actions/download-artifact@v2
+      with:
+        name: cover-agent-macos-latest
+        path: dist/macos-latest
     - name: Extract version
       run: |
         echo "VERSION=$(cat cover_agent/version.txt)" >> $GITHUB_ENV
@@ -141,7 +159,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/cover-agent-ubuntu-latest/cover-agent-ubuntu-latest
+        asset_path: dist/ubuntu-latest/cover-agent
         asset_name: cover-agent-ubuntu
         asset_content_type: application/octet-stream
     - name: Upload Release Asset (Windows)
@@ -150,7 +168,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/cover-agent-windows-latest/cover-agent-windows-latest.exe
+        asset_path: dist/windows-latest/cover-agent.exe
         asset_name: cover-agent-windows.exe
         asset_content_type: application/octet-stream
     - name: Upload Release Asset (macOS)
@@ -159,6 +177,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/cover-agent-macos-latest/cover-agent-macos-latest
+        asset_path: dist/macos-latest/cover-agent
         asset_name: cover-agent-macos
         asset_content_type: application/octet-stream
